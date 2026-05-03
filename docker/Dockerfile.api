@@ -1,0 +1,29 @@
+# Multi-stage build. Final image runs as non-root, no build tools, no shell tricks.
+ARG PYTHON_VERSION=3.11
+
+# ---- builder ----
+FROM python:${PYTHON_VERSION}-slim AS builder
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONDONTWRITEBYTECODE=1
+WORKDIR /build
+COPY pyproject.toml ./
+COPY src/ ./src/
+RUN pip install --upgrade pip && \
+    pip wheel --wheel-dir /wheels .
+
+# ---- runtime ----
+FROM python:${PYTHON_VERSION}-slim AS runtime
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+RUN groupadd --system --gid 1000 app && \
+    useradd --system --uid 1000 --gid app --no-create-home app
+WORKDIR /app
+COPY --from=builder /wheels /wheels
+RUN pip install --no-index --find-links=/wheels asm && rm -rf /wheels
+USER app
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status==200 else 1)"
+CMD ["uvicorn", "asm.serving.api:app", "--host", "0.0.0.0", "--port", "8000"]

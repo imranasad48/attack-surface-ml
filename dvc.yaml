@@ -1,0 +1,23 @@
+stages:
+  ingest:
+    cmd: python -m asm.data.ingest
+    deps: [src/asm/data]
+    outs:
+      - data/raw
+
+  features:
+    cmd: python -m asm.features.build
+    deps:
+      - src/asm/features
+      - data/raw
+    outs:
+      - data/processed/features.parquet
+
+  train:
+    cmd: python -m asm.models.train
+    deps:
+      - src/asm/models/train.py
+      - data/processed/features.parquet
+    metrics:
+      - metrics/train.json:
+          cache: false

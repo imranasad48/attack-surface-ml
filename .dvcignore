@@ -1,0 +1,3 @@
+# DVC will not track these inside data/
+*.tmp
+.DS_Store

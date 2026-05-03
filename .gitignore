@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual envs
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Tooling
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.tox/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data (DVC tracks the actual content)
+data/raw/*
+data/interim/*
+data/processed/*
+!data/**/.gitkeep
+
+# Models
+mlruns/
+mlartifacts/
+*.pkl
+*.joblib
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / SBOMs / signatures (output artifacts, not source)
+*.pem
+*.key
+sbom-*.json
+*.sig

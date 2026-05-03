@@ -1,0 +1,87 @@
+# This is the MLSecOps showcase. Each job demonstrates one control.
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 4 * * 1"   # weekly Monday 04:00 UTC
+
+permissions:
+  contents: read
+  security-events: write    # for SARIF upload
+
+jobs:
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sast:
+    name: Python SAST (bandit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install bandit[toml]
+      - run: bandit -c pyproject.toml -r src -f sarif -o bandit.sarif
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with: { sarif_file: bandit.sarif }
+
+  deps:
+    name: Dependency vulns (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install pip-audit
+      - run: pip-audit --strict
+
+  container:
+    name: Container scan + SBOM
+    runs-on: ubuntu-latest
+    needs: [sast, deps]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -f docker/Dockerfile.api -t asm-api:${{ github.sha }} .
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: asm-api:${{ github.sha }}
+          format: sarif
+          output: trivy.sarif
+          severity: CRITICAL,HIGH
+          exit-code: 1
+          ignore-unfixed: true
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with: { sarif_file: trivy.sarif }
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: asm-api:${{ github.sha }}
+          format: cyclonedx-json
+          artifact-name: sbom-api.cdx.json
+
+  adversarial:
+    name: Adversarial robustness (ART)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -e ".[dev,security]"
+      - run: pytest tests/security/ -v
