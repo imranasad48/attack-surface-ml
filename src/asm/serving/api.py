@@ -30,7 +30,7 @@ _model_state: dict[str, Any] = {"model": None, "version": "unloaded"}
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
     """Load model at startup. If load fails, server starts but /predict returns 503."""
     settings = get_settings()
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
