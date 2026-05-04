@@ -1,4 +1,5 @@
 """Input validation is a security control. Test it like one."""
+
 from fastapi.testclient import TestClient
 
 from asm.serving.api import app
@@ -17,7 +18,5 @@ def test_rejects_oversized_cve_list() -> None:
 
 
 def test_rejects_empty_asset_id() -> None:
-    r = client.post(
-        "/predict", headers=HEAD, json={"asset_id": "", "cve_ids": ["CVE-2024-0001"]}
-    )
+    r = client.post("/predict", headers=HEAD, json={"asset_id": "", "cve_ids": ["CVE-2024-0001"]})
     assert r.status_code == 422

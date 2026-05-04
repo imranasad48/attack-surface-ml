@@ -1,13 +1,15 @@
 """Pull EPSS daily feed. Hash every snapshot. Validate schema before persisting."""
+
 from __future__ import annotations
 
 import os
+
 os.environ.setdefault("DISABLE_PANDERA_IMPORT_WARNING", "True")
 
 import gzip
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -31,7 +33,7 @@ def _write_snapshot(name: str, payload: bytes) -> Path:
     """Write payload + manifest with sha256 + ISO timestamp. Provenance you can verify."""
     RAW.mkdir(parents=True, exist_ok=True)
     digest = _sha256(payload)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out = RAW / f"{name}-{ts}.csv.gz"
     out.write_bytes(payload)
     manifest = {
@@ -66,7 +68,7 @@ def ingest_epss() -> Path:
         df = pd.read_csv(f, comment="#")
     log.info("epss.parsed", rows=len(df), cols=list(df.columns))
 
-    # Validate schema. If EPSS changes their format, we want to fail loud here, not silently downstream.
+    # Validate schema. EPSS format changes should fail loud here, not silently downstream.
     EPSSRecord.validate(df, lazy=True)
 
     PROCESSED.mkdir(parents=True, exist_ok=True)

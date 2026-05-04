@@ -1,9 +1,10 @@
 """FastAPI surface. Auth, input validation, audit logging, real model predictions."""
+
 from __future__ import annotations
 
 import re
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import mlflow
@@ -107,7 +108,7 @@ def _build_features(cve_ids: list[str]) -> pd.DataFrame:
         rows.append(
             {
                 "cve_year": year,
-                "cve_age_years": datetime.now(timezone.utc).year - year,
+                "cve_age_years": datetime.now(UTC).year - year,
                 "cve_seq_log": float(np.log1p(seq)),
             }
         )
@@ -118,9 +119,7 @@ def _build_features(cve_ids: list[str]) -> pd.DataFrame:
 def predict(req: PredictRequest, _: str = Depends(require_api_key)) -> PredictResponse:
     model = _model_state["model"]
     if model is None:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE, "Model not loaded"
-        )
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Model not loaded")
 
     features = _build_features(req.cve_ids)
     proba_arr = model.predict_proba(features)[:, 1]

@@ -1,13 +1,13 @@
 """Centralized config. All secrets and environment-dependent values flow through here."""
+
 from functools import lru_cache
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # Application
     app_env: str = Field(default="development")

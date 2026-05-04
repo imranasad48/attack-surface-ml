@@ -1,11 +1,12 @@
 """Train a CVE risk-classifier from EPSS data. Logs to MLflow with full provenance."""
+
 from __future__ import annotations
 
 import hashlib
 import json
 import re
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import mlflow
@@ -34,7 +35,9 @@ def _git_sha() -> str:
     """Best-effort git commit sha for provenance. Returns 'unknown' if not a repo yet."""
     try:
         return subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL, text=True
+            ["git", "rev-parse", "HEAD"],  # noqa: S607
+            stderr=subprocess.DEVNULL,
+            text=True,
         ).strip()
     except (subprocess.CalledProcessError, FileNotFoundError):
         return "unknown"
@@ -66,7 +69,7 @@ def build_features(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     features = pd.DataFrame(
         {
             "cve_year": parsed["year"],
-            "cve_age_years": datetime.now(timezone.utc).year - parsed["year"],
+            "cve_age_years": datetime.now(UTC).year - parsed["year"],
             "cve_seq_log": np.log1p(parsed["seq"]),
         }
     )
@@ -84,8 +87,8 @@ def main() -> None:
     data_hash = _data_sha256(DATA)
     git_sha = _git_sha()
 
-    X, y = build_features(df)
-    X_train, X_test, y_train, y_test = train_test_split(
+    X, y = build_features(df)  # noqa: N806  # ML convention (sklearn/xgboost)
+    X_train, X_test, y_train, y_test = train_test_split(  # noqa: N806
         X, y, test_size=0.2, random_state=RANDOM_STATE, stratify=y
     )
 
