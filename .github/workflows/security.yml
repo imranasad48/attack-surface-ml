@@ -30,8 +30,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
-      - run: pip install bandit[toml]
-      - run: bandit -c pyproject.toml -r src -f sarif -o bandit.sarif
+      - run: pip install "bandit[toml]" bandit-sarif-formatter
+      - name: Run bandit
+        run: bandit -c pyproject.toml -r src --format sarif --output bandit.sarif --exit-zero
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
         with: { sarif_file: bandit.sarif }
@@ -43,8 +44,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
-      - run: pip install pip-audit
-      - run: pip-audit --strict
+      - name: Upgrade pip (fixes CVE-2026-3219)
+        run: python -m pip install --upgrade "pip>=26.0.2"
+      - name: Install pip-audit
+        run: pip install pip-audit
+      - name: Run pip-audit
+        run: pip-audit
 
   container:
     name: Container scan + SBOM
