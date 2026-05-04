@@ -64,3 +64,8 @@ Thumbs.db
 *.key
 sbom-*.json
 *.sig
+
+mlflow.db
+mlartifacts/
+metrics/
+asm.db
