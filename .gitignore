@@ -49,6 +49,7 @@ data/interim/*
 data/processed/*
 data/discovery/*
 data/misconfig/*
+data/orchestrator/*
 !data/**/.gitkeep
 
 # Models

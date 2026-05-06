@@ -12,13 +12,15 @@ import mlflow.xgboost
 import numpy as np
 import pandas as pd
 import structlog
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, status
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from asm.config import get_settings
+from asm.orchestrator import jobs
+from asm.orchestrator.schemas import ScanJob
 from asm.serving.audit import audit_log
 
 log = structlog.get_logger()
@@ -159,3 +161,37 @@ def predict(
         max_risk_score=float(proba_arr.max()),
         scores=scores,
     )
+
+
+class ScanRequest(BaseModel):
+    # Hostname-shape only: alphanumerics, dots, hyphens. Blocks shell metacharacters
+    # before the target reaches the subfinder/nmap/nuclei subprocess wrappers.
+    target: str = Field(min_length=1, max_length=253, pattern=r"^[a-zA-Z0-9.-]+$")
+
+
+@app.post("/scan", response_model=ScanJob)
+@limiter.limit("10/minute")
+def start_scan(
+    request: Request,  # required by slowapi for per-key bucketing
+    req: ScanRequest,
+    background_tasks: BackgroundTasks,
+    _: str = Depends(require_api_key),
+) -> ScanJob:
+    job = jobs.create_job(req.target)
+    background_tasks.add_task(jobs.run_scan_in_background, job.job_id)
+    audit_log(event="scan.start", asset_id=req.target, job_id=job.job_id)
+    return job
+
+
+@app.get("/scan/{job_id}", response_model=ScanJob)
+@limiter.limit("60/minute")
+def get_scan(
+    request: Request,
+    job_id: str,
+    _: str = Depends(require_api_key),
+) -> ScanJob:
+    job = jobs.get_job(job_id)
+    if job is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Scan job not found")
+    audit_log(event="scan.poll", job_id=job_id, status=job.status)
+    return job
