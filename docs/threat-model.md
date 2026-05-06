@@ -43,7 +43,7 @@ events for every request, including the path and HTTP status. A spike of
 401s on `/predict` is observable in the structured logs; no alarm exists
 today.
 
-**Mitigation today:** `require_api_key` in `src/asm/serving/api.py:52`
+**Mitigation today:** `require_api_key` in `src/asm/serving/api.py:65`
 checks the `X-API-Key` header against `settings.api_key`, returning 401 if
 absent or mismatched. `auto_error=False` on the `APIKeyHeader` is
 deliberate so the rejection is uniform whether the header is missing or
@@ -67,7 +67,7 @@ everything `high_risk=False` to suppress alerts on real exploits.
 **Attack scenario:** Attacker compromises the MLflow tracking host, the
 artifact bucket, or the local `mlartifacts/` directory. They overwrite the
 model file. On the next API restart, `lifespan` in
-`src/asm/serving/api.py:33` calls `mlflow.xgboost.load_model` against the
+`src/asm/serving/api.py:47` calls `mlflow.xgboost.load_model` against the
 URI and the FastAPI process serves the attacker's model. There is no
 signature check.
 
@@ -116,6 +116,47 @@ caught — see §7.1.
 comparing today's snapshot to a rolling baseline; alert on KS-statistic
 > threshold). Lands in `src/asm/data/ingest.py` as a post-validate step,
 with the report saved alongside the manifest.
+
+### 1.4 Subprocess binary substitution
+
+**Threat:** An attacker with write access to the host filesystem replaces
+`subfinder`, `nmap`, or `nuclei` on `PATH` with a malicious binary that
+returns crafted output. The orchestrator (`architecture.md` §8) shells out
+to all three.
+
+**Attack scenario:** Attacker has write access to a directory on the
+operator's `PATH` that resolves before the legitimate binary location
+(e.g. `~/bin` or `/usr/local/bin` ahead of the package-manager-installed
+`/usr/bin/nmap`). They drop a fake `nmap` that returns XML claiming the
+operator's hosts have no open ports — or, more usefully, that returns
+CPEs for harmless software so the downstream NVD lookup finds nothing.
+The orchestrator scan completes successfully and reports no risk for
+the attacker's preferred assets.
+
+**Detection:** Not detected today. The orchestrator logs
+`discovery.tool.missing` if the binary isn't on `PATH` at all, but a
+*substituted* binary that runs cleanly produces no signal. The
+`tool_versions` field in the result records what the binary self-reports
+under `--version`, which a malicious binary controls.
+
+**Mitigation today:** Filesystem permissions on the binary install
+locations are the only defense. The Docker image bundles known-good
+binaries from `apt` / `go install` at build time, so the container path
+is narrower than a developer laptop's. The `ScanRequest.target` regex
+on `/scan` (`src/asm/serving/api.py:169`) restricts the value passed to
+the wrappers to `[a-zA-Z0-9.-]+` — that's an injection mitigation
+(§5.4), not a substitution mitigation.
+
+**Residual risk:** Anyone with write access to a `PATH` directory
+preceding the legitimate one wins. On a developer laptop with `~/bin`
+on `PATH`, this is whoever has that user account.
+
+**Phase 2:** Pin SHA-256 hashes of expected binaries in
+`asm.discovery.subfinder._subfinder_version`,
+`asm.discovery.nmap._nmap_version`, and
+`asm.misconfig.nuclei._nuclei_version`. Refuse to invoke a binary whose
+hash doesn't match. Distribute expected hashes via the same channel as
+the model signature (Cosign).
 
 ---
 
@@ -219,6 +260,49 @@ are out of scope for the server.
 **Phase 2:** No additional server-side action needed. Operator
 documentation should require TLS 1.2+ for any non-localhost client.
 
+### 2.4 NVD response tampering (MitM)
+
+**Threat:** An attacker on the network path between the orchestrator and
+NVD's REST API returns a tampered response — adding fake CVEs, removing
+real ones, or returning empty `vulnerabilities` for a vulnerable
+product.
+
+**Attack scenario:** Operator runs `POST /scan`. The orchestrator
+queries `https://services.nvd.nist.gov/rest/json/cves/2.0?cpeName=<cpe>`
+for each discovered CPE. A network attacker — compromised public CA
+issuing a cert for `services.nvd.nist.gov`, hijacked NVD CDN edge,
+TLS-stripping local network appliance — returns
+`{"vulnerabilities": []}` for the attacker's preferred CPE. The
+`UnifiedScanResult` reports the asset as having no known CVEs, exactly
+what the attacker wants. The result is hash-validated and persisted as
+"completed," indistinguishable downstream from a legitimate clean scan.
+
+**Detection:** Not detected today. The orchestrator logs
+`nvd.fetch.done` with `n_cves` per CPE, but a "0 CVEs" result for a
+CPE is structurally indistinguishable from a legitimate one for an
+unaffected product.
+
+**Mitigation today:** httpx's default TLS verification (system trust
+store) catches a *fake* certificate. The SQLite cache at
+`data/orchestrator/nvd_cache.db` means a previously-seen CPE returns a
+known-good result without re-fetching, so a one-time MitM only poisons
+CPEs that aren't yet in the cache. The cache is keyed on the original
+CPE string and persists across runs and across container restarts (it's
+on the host filesystem under `data/orchestrator/`).
+
+**Residual risk:** No certificate pinning. Any attacker with a CA the
+operator's host trusts (corporate MitM proxy, compromised public CA)
+can return arbitrary tampered responses for new CPEs. The cache helps
+only after the first legitimate fetch — for a long-tail CPE that's
+never been seen, the first result is whatever the attacker says it is.
+
+**Phase 2:** Pin NVD's certificate (or the public-key fingerprint) in
+`nvd.py`. Re-run cached lookups periodically (weekly) to detect
+tampering that was originally cached as legitimate. Cross-check sampled
+CVE results against a second source (CIRCL CVE-Search, GitHub
+Advisories) and alarm on mismatch. Same pattern as `data.sha256`
+cross-validation in §2.1.
+
 ---
 
 ## 3. Repudiation
@@ -239,9 +323,12 @@ missing, blame is unassignable and process improvement is impossible.
 
 **Mitigation today:** `audit_log` in `src/asm/serving/audit.py` is bound
 to the structlog logger named `"audit"`. Every `/predict` call emits an
-event with `asset_id`, `n_cves`, `max_score`, `model_version`. The audit
-middleware in `src/asm/serving/api.py:62` also logs `request.start` and
-`request.end` for the entire HTTP surface with path, method, and status.
+event with `asset_id`, `n_cves`, `max_score`, `model_version`. Every
+`/scan` call emits `event=scan.start` with the target and job_id; every
+`/scan/{job_id}` poll emits `event=scan.poll` with the current status
+(see `architecture.md` §8.2). The audit middleware in
+`src/asm/serving/api.py:77` also logs `request.start` and `request.end`
+for the entire HTTP surface with path, method, and status.
 
 **Residual risk:** The audit log doesn't include the *full input* (every
 CVE ID) or a hash of it; per-CVE scores aren't logged. If the question is
@@ -351,7 +438,7 @@ values, no training-set CVE IDs, no internal identifiers.
 **Detection:** N/A — the response schema is the mitigation.
 
 **Mitigation today:** `PredictResponse` and `CVEScore` Pydantic models in
-`src/asm/serving/api.py:84` constrain the output shape. The model returns
+`src/asm/serving/api.py:99` constrain the output shape. The model returns
 probabilities, not feature vectors.
 
 **Residual risk:** The probability itself is information — see §7.3 for
@@ -370,7 +457,7 @@ log-poisoning if interpreted by a downstream log analyzer).
 
 **Attack scenario:** Attacker sends a malformed CVE ID containing markup
 or control characters. The 422 response from `_build_features`
-(`src/asm/serving/api.py:102`) includes the offending CVE in the body:
+(`src/asm/serving/api.py:112`) includes the offending CVE in the body:
 `f"Invalid CVE ID format: {cve}"`. A downstream consumer that renders
 this into HTML, or a log collector that splits on newlines, sees
 attacker-controlled bytes.
@@ -409,7 +496,7 @@ audit middleware logs the request status, so a flood of 422s is visible
 in the log. No alarm today.
 
 **Mitigation today:** `PredictRequest.cve_ids` has `max_length=500` and
-`asset_id` has `max_length=128` (`src/asm/serving/api.py:79`). Pydantic
+`asset_id` has `max_length=128` (`src/asm/serving/api.py:94`). Pydantic
 rejects oversized payloads before the handler executes.
 
 **Residual risk:** 500 CVEs is fine for one request, but a parallel flood
@@ -449,6 +536,17 @@ This control was open across the prior two revisions of this document
 preserved in the restructured version. It is now closed, and the
 covering tests live in `tests/serving/test_rate_limit.py`.
 
+The same `slowapi` infrastructure was extended to the orchestrator
+endpoints when they landed: `/scan` is rate-limited to 10/minute per
+key (reflecting that each scan is 60–120 seconds of orchestration
+work — see §5.4) and `/scan/{job_id}` to 60/minute per key (polling is
+cheap). The three endpoints have *separate* per-key buckets on the
+same `Limiter` instance — slowapi's `@limiter.limit` is per-route. A
+key that has exhausted its `/predict` budget for the minute can still
+call `/scan` up to its own 10/minute cap, and vice versa. That's the
+intended behaviour, but it does mean a single leaked key has more
+total budget than any one cap implies.
+
 **Residual risk:** The limit is a single global value. An adversary in
 possession of multiple valid keys (e.g. multiple leaked tenant keys)
 can still amplify the effective ceiling. The in-memory storage backend
@@ -485,6 +583,58 @@ inside 60 seconds.
 **Phase 2:** Stream the response and abort if running byte count exceeds
 a configurable cap (e.g., 200 MB; EPSS is normally ~10 MB). Lands in
 `_fetch` in `src/asm/data/ingest.py`.
+
+### 5.4 /scan amplification
+
+**Threat:** An authenticated attacker with a valid API key submits
+`POST /scan` requests at the rate-limit ceiling. Each call triggers a
+60–120 second background task that consumes worker threads, subprocess
+slots (subfinder, nmap, nuclei spawned per scan), and external API
+quota (NVD). One cheap HTTP request amplifies into substantial
+sustained backend cost.
+
+**Attack scenario:** Attacker has a key. They run a script that issues
+10 `POST /scan` per minute (the configured cap) against different
+targets. Within 60 seconds, ~10 background scans are running
+concurrently. FastAPI's worker thread pool saturates; legitimate
+`/predict` and `/health` calls queue behind blocked-on-IO scans;
+subfinder/nmap subprocesses fork toward the host's process limit; NVD's
+per-key budget burns even faster than the 6-second-per-CPE sleep
+enforces. After several minutes the host's disk fills with
+`data/orchestrator/<target>-<ts>.json` artifacts.
+
+**Detection:** Audit middleware logs every `/scan` and `/scan/{job_id}`
+request. Slowapi's 429 responses for over-limit attempts are visible.
+Per-host process counts and `data/orchestrator/` size are observable to
+the operator but not alarmed.
+
+**Mitigation today:** `/scan` is rate-limited to 10/minute per API key
+(`src/asm/serving/api.py:173`). `/scan/{job_id}` is 60/minute per key
+(`:187`). The orchestrator caps `max_assets` at 10 per scan
+(`pipeline.run_scan` default — lower than discovery's standalone
+default of 50, deliberately, because the full pipeline is slower per
+host than discovery alone). The `ScanRequest.target` regex
+(`src/asm/serving/api.py:169`) prevents one obvious amplification path
+— pointing a scan at an internal IP range or service URL — by
+restricting the value to hostname-shaped strings.
+
+**Residual risk:** 10 scans/minute is still 600 scans/hour — easily
+enough to fill an unprovisioned data disk and drain NVD quota over a
+sustained attack. The thread pool size is uvicorn's default, not tuned
+for this workload. There's no concurrency cap on simultaneously-running
+background scans — the 10/minute is *arrival rate*, not concurrent
+limit, so an attacker can still stack scans up to the cap before the
+oldest one completes. The in-memory `_JOBS` dict (`architecture.md`
+§8.4) grows unbounded across the process's lifetime.
+
+**Phase 2:** Add a global concurrency limit on `run_scan_in_background`
+(e.g. max 3 concurrent scans regardless of source). Move job dispatch
+to a real queue (Redis + RQ, or Celery) so the FastAPI process is not
+also the worker. Gate `/scan` on a separate per-tenant scan budget
+(e.g. 20 scans per day per tenant). Disk-quota the
+`data/orchestrator/` directory at the OS level. Periodic GC on the
+in-memory job store (e.g. drop `completed`/`failed` jobs older than
+24 hours) until the durable backend lands.
 
 ---
 
@@ -708,6 +858,52 @@ tabular, HopSkipJump for query-only). Store baseline robustness metrics
 in `metrics/adversarial.json` (paralleling `metrics/train.json`). Gate
 promotion on no-regression vs the previous baseline.
 
+### 7.5 Orchestrator bypass via direct `/predict`
+
+**Threat:** The orchestrator (`architecture.md` §8) builds CVE-ID lists
+from CPE-to-CVE NVD lookups, then calls `/predict` to score them. An
+attacker with a leaked API key can skip `/scan` entirely and call
+`/predict` directly with hand-crafted CVE-ID lists, scoring CVEs
+without the discovery + misconfig + NVD context that gives
+orchestrator output its meaning.
+
+**Attack scenario:** Attacker has a valid API key. Instead of `POST
+/scan`, they call `POST /predict` with `{"asset_id": "<anything>",
+"cve_ids": [...]}` directly. This isn't an attack against the model in
+any cryptographic sense — it's the documented `/predict` API. But
+operators reading orchestrator-emitted reports may assume risk scores
+were always made in the context of a discovered asset inventory. They
+weren't — the same model can be invoked free-standing.
+
+**Detection:** Audit logs distinguish `event=scan.start` (orchestrator
+path) from `event=predict` (direct path). A sudden spike of direct
+`/predict` calls without corresponding `/scan` activity is observable.
+No alarm is wired today.
+
+**Mitigation today:** `/predict` and `/scan` share auth (the same
+`X-API-Key`) but have separate per-key rate-limit buckets (§5.2). A
+leaked key can drain both, but each at its own cap. The `audit_log`
+events differ enough that a forensic reader can tell which path
+produced a given score.
+
+**Residual risk:** Until per-tenant JWTs land (1.1, 1.3, 3.3), there
+is no cryptographic distinction between "the orchestrator's internal
+loopback call to `/predict`" and "an external client's call to
+`/predict`." The orchestrator currently uses the same shared API key
+for the loopback as any other client.
+
+**Phase 2:** Swap the loopback `/predict` call for a direct
+in-process function call, bypassing HTTP entirely. The orchestrator
+imports `asm.serving.api` already; switching `_score_asset_cves` to
+call the underlying scoring function directly removes the loopback,
+removes the rate-limit consumption against the orchestrator's own
+key, and removes this whole class of bypass — there is no separate
+"orchestrator key" because there is no separate HTTP call. The
+trade-off is that the orchestrator stops being a black-box client of
+the public `/predict` contract; in exchange, the seam between the ASM
+and ML pipelines becomes a Python function boundary instead of an
+HTTP boundary.
+
 ---
 
 ## 8. Out of scope
@@ -736,9 +932,18 @@ promotion on no-regression vs the previous baseline.
   across this document and are currently one-line TODO files.
 - **Build out the ART skeleton (7.2, 7.4).**
 - **Pin GitHub Actions to commit SHAs (6.2).**
-
-Closed since the previous revision: the FastAPI rate-limit TODO (now
-mitigated in 5.2).
+- **Pin SHA-256 hashes of `subfinder`, `nmap`, `nuclei` binaries
+  (1.4).** New since the orchestrator landed.
+- **Pin NVD's TLS certificate or public-key fingerprint (2.4), and
+  add a periodic re-validation pass over the SQLite cache.** New
+  since the orchestrator landed.
+- **Concurrency cap + GC on the in-memory ScanJob store (5.4).** Even
+  before the durable backend lands, the local MVP would benefit from a
+  simple "max 3 concurrent scans" guard and a "drop completed jobs
+  older than 24h" sweeper.
+- **Replace the orchestrator's loopback `/predict` call with a
+  direct in-process function call (7.5).** Closes the bypass class
+  *and* removes one HTTP hop from every scan.
 
 This document should be updated whenever any of these items lands. A
 threat model that lags the code is worse than no threat model.
