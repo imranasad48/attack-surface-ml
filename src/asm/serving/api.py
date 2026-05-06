@@ -15,6 +15,8 @@ import structlog
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from asm.config import get_settings
 from asm.serving.audit import audit_log
@@ -24,9 +26,18 @@ log = structlog.get_logger()
 MODEL_NAME = "cve-risk-classifier"
 MODEL_STAGE = "1"  # version 1; promote to "Production" alias when stable
 CVE_RE = re.compile(r"^CVE-\d{4}-\d{4,7}$")
+RATE_LIMIT_PER_MINUTE = 60  # per X-API-Key, threat-model.md §5.2
 
 # Loaded once at startup, reused. XGBoost predict is thread-safe.
 _model_state: dict[str, Any] = {"model": None, "version": "unloaded"}
+
+
+def _api_key_for_rate_limit(request: Request) -> str:
+    """Bucket per-API-key, not per-IP. Multiple legitimate clients may share an IP."""
+    return request.headers.get("X-API-Key", "anonymous")
+
+
+limiter = Limiter(key_func=_api_key_for_rate_limit)
 
 
 @asynccontextmanager
@@ -57,6 +68,8 @@ def require_api_key(key: str | None = Depends(api_key_header)) -> str:
 
 
 app = FastAPI(title="Attack Surface ML", version="0.1.0", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 
 @app.middleware("http")
@@ -116,7 +129,12 @@ def _build_features(cve_ids: list[str]) -> pd.DataFrame:
 
 
 @app.post("/predict", response_model=PredictResponse)
-def predict(req: PredictRequest, _: str = Depends(require_api_key)) -> PredictResponse:
+@limiter.limit(f"{RATE_LIMIT_PER_MINUTE}/minute")
+def predict(
+    request: Request,  # required by slowapi for per-key bucketing; populated by FastAPI
+    req: PredictRequest,
+    _: str = Depends(require_api_key),
+) -> PredictResponse:
     model = _model_state["model"]
     if model is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Model not loaded")

@@ -418,7 +418,7 @@ of 500-CVE requests is not bounded — see 5.2.
 **Phase 2:** Lower the cap if real workloads stay well under 500. Add a
 total request size limit at the uvicorn / proxy layer.
 
-### 5.2 No rate limit on `/predict` (TODO from previous version, still open)
+### 5.2 Authenticated client floods `/predict`
 
 **Threat:** An authenticated client (legitimate or attacker with a
 leaked key) issues unbounded requests, saturating the API process.
@@ -428,23 +428,38 @@ leaked key) issues unbounded requests, saturating the API process.
 single-process by default; CPU pegs; the model holds the GIL through
 `predict_proba`; latency for legitimate clients climbs into the seconds.
 
-**Detection:** Audit middleware logs every request. A spike of `/predict`
-from one client is visible in retrospect, not in real time.
+**Detection:** Audit middleware logs every request, including the
+slowapi-emitted 429s. A spike of `/predict` from one key is visible
+both in real time (429 responses) and in retrospect (audit log
+filtered on path + status). No alarm is wired today; the signal is
+present in the logs.
 
-**Mitigation today:** **None — this is the standing TODO inherited from
-the previous version of this document and it has not been resolved.**
-The entry is preserved deliberately. See `src/asm/serving/api.py` —
-there is no rate-limit middleware registered, and the threat-model entry
-in §5 of `architecture.md` lists rate limiting as "not validated."
+**Mitigation today:** Per-API-key rate limit of 60 requests/minute on
+`/predict`, implemented via `slowapi` in `src/asm/serving/api.py`. The
+limiter buckets on the `X-API-Key` header value (not client IP), which
+is what this threat model has always promised — multiple legitimate
+clients may share an IP, but they each carry their own key. The cap is
+exposed as `RATE_LIMIT_PER_MINUTE` near the top of the module so it can
+be tuned without touching the route. The rate-limit check runs *after*
+`require_api_key` succeeds, so an unauthenticated attacker is rejected
+at 401 (cheaper) before the limit check would apply.
 
-**Residual risk:** A misbehaving (or hostile) authenticated client can
-denial-of-service the entire instance.
+This control was open across the prior two revisions of this document
+— "(TODO)" in the original 37-line outline, and the standing item
+preserved in the restructured version. It is now closed, and the
+covering tests live in `tests/serving/test_rate_limit.py`.
 
-**Phase 2:** Per-key (eventually per-tenant-JWT) rate-limit middleware
-in `src/asm/serving/api.py` — `slowapi` or a hand-rolled token bucket
-keyed on the `X-API-Key`. Tracked as the open TODO; when resolved this
-section moves to "Mitigation today." Production additionally gets
-concurrency limits on the App Runner service per `aws-blueprint.md` §2.
+**Residual risk:** The limit is a single global value. An adversary in
+possession of multiple valid keys (e.g. multiple leaked tenant keys)
+can still amplify the effective ceiling. The in-memory storage backend
+also resets on process restart — a process crashing under load and
+restarting hands a fresh 60/minute budget to whoever was hammering it.
+
+**Phase 2:** Move limiter storage to Redis (or App Runner's managed
+state) so the budget survives process restarts. Per-tenant JWTs replace
+shared API keys (1.1), allowing per-tenant *and* per-key budgets.
+Production additionally gets concurrency limits on the App Runner
+service per `aws-blueprint.md` §2.
 
 ### 5.3 Large EPSS feed exhausting disk
 
@@ -713,8 +728,6 @@ promotion on no-regression vs the previous baseline.
 
 ## 9. Standing open items
 
-- **Resolve the FastAPI rate-limit TODO (5.2).** Longest-running gap in
-  this document.
 - **Implement Cosign signing (1.2, 6.3).** Until this lands, the trust
   boundary in `architecture.md` §5 is broader than a security reviewer
   would normally accept.
@@ -723,6 +736,9 @@ promotion on no-regression vs the previous baseline.
   across this document and are currently one-line TODO files.
 - **Build out the ART skeleton (7.2, 7.4).**
 - **Pin GitHub Actions to commit SHAs (6.2).**
+
+Closed since the previous revision: the FastAPI rate-limit TODO (now
+mitigated in 5.2).
 
 This document should be updated whenever any of these items lands. A
 threat model that lags the code is worse than no threat model.
