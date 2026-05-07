@@ -17,8 +17,7 @@ from asm.discovery.subfinder import _subfinder_version, enumerate_subdomains
 log = structlog.get_logger()
 
 DISCOVERY_DIR = Path("data/discovery")
-DEFAULT_MAX_ASSETS = 50  # 50 hosts × ~1 min/host bounds a demo scan; tune up for full inventories
-
+DEFAULT_MAX_ASSETS = 50  # 50 hosts x ~1 min/host bounds a demo scan; tune up for full inventories
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
