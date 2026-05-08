@@ -70,7 +70,19 @@ jobs:
 
       - name: Pull new image and restart api
         run: |
-          ssh -o StrictHostKeyChecking=yes \
+          echo "=== SSH_AUTH_SOCK=$SSH_AUTH_SOCK ==="
+          echo "=== ssh-add -l ==="
+          ssh-add -l || echo "ssh-add -l failed"
+          echo "=== which ssh ==="
+          which ssh
+          echo "=== ssh -V ==="
+          ssh -V
+          echo "=== known_hosts ==="
+          ls -la ~/.ssh/known_hosts
+          cat ~/.ssh/known_hosts | head -3
+          echo "=== executing remote ssh ==="
+          ssh -v \
+              -o StrictHostKeyChecking=yes \
               -o ServerAliveInterval=10 \
               -o ServerAliveCountMax=3 \
               ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} <<'EOF'
