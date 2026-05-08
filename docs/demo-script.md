@@ -1,7 +1,8 @@
 # Demo script
 
 **Audience:** viva examiners. **Format:** read-along, top-to-bottom.
-**Duration:** ~16 minutes across four acts, plus Q&A.
+**Primary demo target:** the live production deployment at <https://13-233-25-75.nip.io>. Local-only fallback in [Disaster recovery](#disaster-recovery-if-production-is-unreachable-mid-demo).
+**Duration:** ~17 minutes across four acts, plus Q&A. (+1 min upfront to walk the examiner through `/health` + `/docs` browser tabs to establish "this is live.")
 **Tone:** show the system working. No marketing voice.
 
 ---
@@ -22,35 +23,43 @@
 Run every item below at least 10 minutes before the viva starts. If any
 item fails, fix it before the examiner walks in.
 
-- [ ] **MLflow up.** Open `http://127.0.0.1:5000` in a browser. The
-  experiments page must render. If not: `mlflow server --backend-store-uri
-  sqlite:///mlflow.db --default-artifact-root ./mlartifacts --host 127.0.0.1
-  --port 5000` in Terminal A.
-- [ ] **API up.** Open `http://127.0.0.1:8000/docs`. Swagger UI must load
-  and show four endpoints: `/health`, `/predict`, `/scan`, `/scan/{job_id}`.
-  If not: `uvicorn asm.serving.api:app --host 127.0.0.1 --port 8000` in
-  Terminal A.
-- [ ] **Model loaded.** `curl http://127.0.0.1:8000/health` returns
-  `"model_loaded":"True"`. If `False`, MLflow isn't reachable from the API
-  process — fix MLflow first.
-- [ ] **Scanning tools on PATH.** Run all three:
+**Production target (Acts 2, 3, 4):**
+
+- [ ] **Internet connectivity.** Primary demo target is the production
+  deployment at <https://13-233-25-75.nip.io>. Confirm with
+  `curl https://13-233-25-75.nip.io/health`.
+- [ ] **Browser tab open to <https://13-233-25-75.nip.io/health>.** Should
+  show `{"status":"ok","model_loaded":"True","model_version":"1"}`.
+- [ ] **Browser tab open to <https://13-233-25-75.nip.io/docs>.** Should
+  render Swagger UI listing four endpoints: `/health`, `/predict`, `/scan`,
+  `/scan/{job_id}`.
+- [ ] **Production API key in shell.** Pull from EC2's `.env`:
   ```powershell
-  subfinder -version
-  nmap --version
-  nuclei -version
+  $key = ssh ubuntu@13-233-25-75.nip.io 'grep ^API_KEY= ~/attack-surface-ml/.env | cut -d= -f2'
+  $env:API_KEY = $key.Trim()
   ```
-  Each must print a version. If any errors: see README "Install scanning
-  tools."
+  Confirm: `$env:API_KEY` length should be 32+ chars.
+
+**Local CLI (Act 1 only):**
+
+- [ ] **Scanning tools on PATH.** `subfinder -version`, `nmap --version`,
+  `nuclei -version` — each must print a version. If any errors: see README
+  "Install scanning tools."
 - [ ] **NVD cache warm.** `Test-Path data\orchestrator\nvd_cache.db` is
   `True`. A warm cache turns a 60–90 second scan into a 10–15 second one;
   the demo timing depends on it.
 - [ ] **Recent scan present.** At least one
-  `data/orchestrator/scanme.nmap.org-*.json` exists. Confirms the live demo
-  will have a fallback.
-- [ ] **Tests green.** Run `pytest -q` one more time. All 40 tests should
+  `data/orchestrator/scanme.nmap.org-*.json` exists — used as a fallback if
+  the live CLI scan fails.
+
+**Cross-cutting:**
+
+- [ ] **Tests green.** Run `pytest -q` once locally. All 40 tests should
   pass, 1 skipped. **If any fail, do not start the demo** — fix first.
 - [ ] **Three terminals visible** on screen, sized so all are readable.
   Layout below.
+- [ ] **Optional fallback** (only if internet fails): local mlflow + uvicorn
+  — see [Disaster recovery](#disaster-recovery-if-production-is-unreachable-mid-demo).
 
 ---
 
@@ -58,11 +67,17 @@ item fails, fix it before the examiner walks in.
 
 | Terminal | Purpose | Leave running? | Visible to examiner |
 |---|---|---|---|
-| **A** | MLflow + uvicorn API. Streams audit-log lines as they happen. | Yes — never close. | Yes — they should see logs flow as you scan. |
-| **B** | Where you run scan commands. | No — type fresh per act. | Yes. |
+| **A** | SSH'd `docker logs -f` of the production API container. Streams audit-log lines as they happen. | Yes — never close. | Yes — they should see logs flow as you scan. |
+| **B** | Where you run scan commands against the production URL. | No — type fresh per act. | Yes. |
 | **C** | File inspection: `cat`, `jq`, `curl`. | No. | Yes. |
 
 Tile A on the left half of screen, B top-right, C bottom-right.
+
+Terminal A setup:
+
+```powershell
+ssh ubuntu@13-233-25-75.nip.io 'docker logs -f --tail 50 attack-surface-ml-api-1'
+```
 
 ---
 
@@ -156,7 +171,7 @@ production-shape interface.
 
 ```powershell
 $apiKey = (Get-Content .env | Select-String '^API_KEY=').ToString().Split('=')[1]
-$resp = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/scan `
+$resp = Invoke-RestMethod -Method Post -Uri https://13-233-25-75.nip.io/scan `
   -Headers @{ "X-API-Key" = $apiKey } `
   -ContentType "application/json" `
   -Body '{"target":"scanme.nmap.org"}'
@@ -187,7 +202,7 @@ Examiner already sees uvicorn logs in Terminal A. Point at:
 
 ```powershell
 Invoke-RestMethod -Method Get `
-  -Uri "http://127.0.0.1:8000/scan/$jobId" `
+  -Uri "https://13-233-25-75.nip.io/scan/$jobId" `
   -Headers @{ "X-API-Key" = $apiKey } | ConvertTo-Json -Depth 6
 ```
 
@@ -211,8 +226,8 @@ Run it 3–4 times across the next ~80 seconds. Say each time:
   refused. Recovery: switch back to the CLI demo from Act 1 and skip the
   rest of Act 2. Say: "The API is the same orchestrator; CLI proves the
   underlying flow."
-- **API key wrong** → 401. Recovery: re-read `.env`,
-  `$apiKey = $env:API_KEY` if loaded as a process env var.
+- **API key wrong** → 401. Recovery: re-fetch from production:
+  `$key = ssh ubuntu@13-233-25-75.nip.io 'grep ^API_KEY= ~/attack-surface-ml/.env | cut -d= -f2'; $env:API_KEY = $key.Trim()`
 - **Polling shows status: "failed"** → look at `result.error` and
   `Terminal A` logs. Common cause: NVD timeout. Say: "Per-phase failure
   isolation — discovery succeeded, NVD failed, scan finished with a partial
@@ -257,7 +272,7 @@ code .github\workflows\security.yml   # or: more .github\workflows\security.yml
 ### DO (Terminal B — trigger /scan and watch the audit stream)
 
 ```powershell
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/scan `
+Invoke-RestMethod -Method Post -Uri https://13-233-25-75.nip.io/scan `
   -Headers @{ "X-API-Key" = $apiKey } `
   -ContentType "application/json" `
   -Body '{"target":"scanme.nmap.org"}' | Out-Null
@@ -279,7 +294,7 @@ Examiner sees in Terminal A:
 ```powershell
 1..11 | ForEach-Object {
   try {
-    $r = Invoke-WebRequest -Method Post -Uri http://127.0.0.1:8000/scan `
+    $r = Invoke-WebRequest -Method Post -Uri https://13-233-25-75.nip.io/scan `
       -Headers @{ "X-API-Key" = $apiKey } `
       -ContentType "application/json" `
       -Body '{"target":"scanme.nmap.org"}'
@@ -420,13 +435,14 @@ Consolidated list of what to do when things break mid-demo.
   scan: **`data/orchestrator/scanme.nmap.org-20260506T172848Z.json`** — the
   113-second CLI scan that produced 141 CVEs and 1 misconfig. Verified
   before the viva. Use this path directly if the live demo fails.
-- **API died mid-act 2 or 3.** Restart it in Terminal A: `uvicorn
-  asm.serving.api:app --host 127.0.0.1 --port 8000`. Job IDs from before
-  the restart are gone (in-memory store) — say so explicitly: "Process
-  restart loses jobs. Documented limitation, replaced by Redis in phase 2."
+- **Production API died mid-act.** Containers have `restart: always` —
+  docker auto-restarts within seconds. Wait, retry. If it doesn't recover,
+  pivot to local via [Disaster recovery](#disaster-recovery-if-production-is-unreachable-mid-demo).
+  Job IDs from before the restart are gone (in-memory ScanJob store) —
+  documented limitation, replaced by Redis in v2.
 - **MLflow died.** API will return 503 on `/predict` and `/scan` will
-  fail in phase 4. Restart MLflow. If running short on time, skip to
-  Act 4 and use the cached scan file.
+  fail in phase 4. Same as above — `restart: always` recovers automatically.
+  If running short on time, skip to Act 4 and use the cached scan file.
 - **NVD is down or slow.** A live cold scan can take >60s for NVD alone.
   Either show it patiently and use the time to talk through the rate-limit
   rationale, or switch to the cached scan.
@@ -480,29 +496,47 @@ like CIRCL CVE-Search.
 
 ### Q4. Why didn't you build the AWS deployment?
 
-Scope discipline. The decision was to ship a working local MVP that
-exercises *every* MLSecOps control end-to-end, rather than half-build a
-production deployment that demonstrates fewer controls. Every control in
-the local pipeline — signed model contracts, audit logging, rate limiting,
-hash-validated provenance, the security workflow — has a phase-2
-counterpart specified in `aws-blueprint.md`. The AWS deployment is the
-*delivery mechanism*; the security thesis is what we built. Examiner can
-read the blueprint to see exactly what would change.
+We did. The production system is live at <https://13-233-25-75.nip.io>.
+Single-node EC2 in `ap-south-1` running three Docker services (api,
+mlflow, postgres) behind nginx with a Let's Encrypt certificate; GitHub
+Actions auto-deploys on every push to `main` (build → GHCR push → SSH +
+`git reset --hard` + compose pull + `/health` poll). The full runbook is
+in [`deployment.md`](deployment.md).
+
+What's not done yet: it's a single-node deployment (not HA), secrets are
+in plaintext `.env` rather than Secrets Manager, and the hostname is
+`nip.io` rather than a registered domain. v2 would add ALB + RDS + Route
+53 — see [`aws-blueprint.md`](aws-blueprint.md) for the target architecture.
 
 ### Q5. What's the gap between this MVP and production?
 
-Five concrete gaps, all documented as standing items in
-`threat-model.md` §9 and `architecture.md` §6:
+**Live today:** AWS EC2 deployment with HTTPS, Docker stack with
+restart-on-reboot, GitHub Actions auto-deploy on push to `main`,
+CloudWatch metrics for CPU/memory/disk. Full runbook in
+[`deployment.md`](deployment.md).
 
-1. Cosign artifact signing (model + parquet).
-2. Durable ScanJob store — Redis or DynamoDB to replace the in-memory
-   dict.
-3. JWT auth with per-tenant scoping to replace the single shared API key.
-4. Evidently distribution-shift monitoring on EPSS ingestion.
-5. Full ART adversarial-robustness suite, currently a skeleton.
+**v2 roadmap** — items not yet shipped, documented in
+`threat-model.md` §9, `architecture.md` §6, and
+[`aws-blueprint.md`](aws-blueprint.md):
 
-Plus the AWS infrastructure itself — Terraform, App Runner, ECR, KMS-
-encrypted S3, CloudWatch. The blueprint specifies all of it.
+*Infrastructure:*
+1. HA / multi-AZ deployment (currently single-node EC2).
+2. RDS-managed Postgres (currently containerized on the same node).
+3. AWS Secrets Manager for `API_KEY` + `NVD_API_KEY` (currently `.env`).
+4. Route 53 + a registered domain (currently `nip.io`).
+
+*Pipeline / operability:*
+5. CI gating on deploy — currently push-to-main triggers regardless of
+   `ci.yml` / `security.yml` outcome.
+6. Automated postgres backups (currently manual `pg_dump`).
+7. Daily nuclei template refresh (currently pinned at image build time).
+
+*ML / security:*
+8. Cosign artifact signing (model + parquet).
+9. Durable ScanJob store — Redis or DynamoDB to replace the in-memory dict.
+10. JWT auth with per-tenant scoping to replace the shared API key.
+11. Evidently distribution-shift monitoring on EPSS ingestion.
+12. Full ART adversarial-robustness suite (currently a skeleton).
 
 ### Q6. Can the model be poisoned by adversarial CVE metadata?
 
@@ -521,4 +555,23 @@ threat reactivates when we add CVSS/KEV features in phase 2.
 
 ---
 
-**End of script.** Total time including 5 minutes of Q&A: ~21 minutes.
+## Disaster recovery (if production is unreachable mid-demo)
+
+If <https://13-233-25-75.nip.io> is unreachable during the demo (internet,
+AWS, or DNS issue), pivot to local in ~30 seconds:
+
+1. In a fresh terminal: `cd <repo> && uvicorn asm.serving.api:app --host 127.0.0.1 --port 8000`
+2. Replace `https://13-233-25-75.nip.io` with `http://127.0.0.1:8000` in
+   any commands you run.
+3. Set `$env:API_KEY` to whatever's in your local `.env` (not the
+   production key).
+4. Continue the demo. Acknowledge the pivot to faculty: "production is
+   reachable normally; falling back to local for this demo because
+   *<reason>*."
+
+This is a fallback, not the primary path. The primary demo target is
+production.
+
+---
+
+**End of script.** Total time including 5 minutes of Q&A: ~22 minutes.
