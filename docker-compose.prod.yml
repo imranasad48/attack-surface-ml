@@ -3,8 +3,8 @@
 # - All services restart on host reboot
 # - API bound to 127.0.0.1 only — nginx terminates HTTPS on 443 and proxies here
 # - Postgres and MLflow have no host port bindings (docker network only)
+# - API mounts mlflow-artifacts so MLflow client (training) can write artifacts locally
 # See docs/deployment.md for the full deploy story.
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -21,7 +21,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-
   mlflow:
     image: ghcr.io/imranasad48/asm-mlflow:v2.11.1
     restart: always
@@ -36,7 +35,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-
   api:
     image: ghcr.io/imranasad48/attack-surface-ml:latest
     restart: always
@@ -46,12 +44,13 @@ services:
       MLFLOW_TRACKING_URI: "http://mlflow:5000"
     ports:
       - "127.0.0.1:8000:8000"
+    volumes:
+      - mlflow-artifacts:/mlflow/artifacts
     depends_on:
       postgres:
         condition: service_healthy
       mlflow:
         condition: service_started
-
 volumes:
   pgdata:
   mlflow-artifacts:
