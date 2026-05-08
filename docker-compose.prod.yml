@@ -23,7 +23,7 @@ services:
       retries: 5
 
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.11.1
+    image: ghcr.io/imranasad48/asm-mlflow:v2.11.1
     restart: always
     command: >
       mlflow server
