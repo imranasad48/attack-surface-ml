@@ -24,7 +24,7 @@ dependencies = [
     "xgboost>=2.0",
     "scikit-learn>=1.4",
     "pandera>=0.18",
-    "mlflow>=2.10",
+    "mlflow==2.11.1",  # pinned to match server in docker-compose.prod.yml — bumping requires postgres migration
     "dvc[s3]>=3.45",
     "evidently>=0.4",
     "structlog>=24.1",

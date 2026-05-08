@@ -1,0 +1,52 @@
+# Build context exclusions for docker/Dockerfile.api.
+# The Dockerfile only COPYs pyproject.toml and src/, but the entire
+# project root is sent to the daemon as build context. Exclude everything
+# else so builds are fast and no dev artifacts leak into image layers.
+
+# VCS
+.git/
+.gitignore
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+.mypy_cache/
+.ruff_cache/
+
+# Local data + ML artifacts (never belong in the image)
+data/
+mlartifacts/
+mlflow.db
+metrics/
+notebooks/
+
+# Docs + tests + dashboard (not needed at runtime)
+docs/
+tests/
+dashboard/
+
+# Local config + secrets
+.env
+.env.example
+.env.production.example
+.dvcignore
+dvc.yaml
+
+# IDE / editor
+.vscode/
+.idea/
+.claude/
+
+# Existing dev compose (we use docker-compose.prod.yml in production)
+docker-compose.yml
+
+# Pre-commit / Makefile (dev-only)
+.pre-commit-config.yaml
+Makefile
+
+# AWS / infra (we don't ship infra files in the image)
+infra/

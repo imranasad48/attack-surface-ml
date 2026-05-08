@@ -14,11 +14,65 @@ RUN pip install --upgrade pip && \
 
 # ---- runtime ----
 FROM python:${PYTHON_VERSION}-slim AS runtime
+
+# Pinned scanner toolchain. nmap is pinned implicitly by the Debian Bookworm apt
+# sources of the python:3.11-slim base; subfinder and nuclei are pinned to exact
+# release tags and verified against SHA256 hashes hardcoded below (fetched once
+# from the upstream checksums files at the linked release URLs).
+ARG SUBFINDER_VERSION=2.6.6
+ARG SUBFINDER_SHA256=6fda32fe1f5750e63fa07c112b1b615d033e425c6dc6659ed8ec61035eb8eba2
+ARG NUCLEI_VERSION=3.3.5
+ARG NUCLEI_SHA256=7daa9af79972f0c483fedd14d20badefeef9685eddb7f35f2fb1e7e59f08309d
+ARG TARGETARCH=amd64
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    NUCLEI_TEMPLATES_PATH=/opt/nuclei-templates/http/misconfiguration
+
+# Install nmap (apt, smallest first), then download + checksum-verify subfinder
+# and nuclei from GitHub Releases, then populate nuclei templates at a known
+# location and chown them to UID 1000 so the non-root `app` user can read them.
+# curl + unzip are install-and-remove in the same RUN layer so they don't end up
+# in the final image (preserves the "no shell utilities" posture from
+# threat-model.md §6.1).
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        nmap \
+        ca-certificates \
+        curl \
+        unzip; \
+    \
+    cd /tmp; \
+    # --- subfinder ---
+    curl -fsSL -o subfinder.zip \
+        "https://github.com/projectdiscovery/subfinder/releases/download/v${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION}_linux_${TARGETARCH}.zip"; \
+    echo "${SUBFINDER_SHA256}  subfinder.zip" | sha256sum -c -; \
+    unzip -j subfinder.zip subfinder -d /usr/local/bin/; \
+    chmod 0755 /usr/local/bin/subfinder; \
+    \
+    # --- nuclei ---
+    curl -fsSL -o nuclei.zip \
+        "https://github.com/projectdiscovery/nuclei/releases/download/v${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION}_linux_${TARGETARCH}.zip"; \
+    echo "${NUCLEI_SHA256}  nuclei.zip" | sha256sum -c -; \
+    unzip -j nuclei.zip nuclei -d /usr/local/bin/; \
+    chmod 0755 /usr/local/bin/nuclei; \
+    \
+    # --- nuclei templates at /opt/nuclei-templates ---
+    nuclei -update-templates -ud /opt/nuclei-templates; \
+    test -d /opt/nuclei-templates/http/misconfiguration || (echo "FATAL: nuclei templates failed to download — http/misconfiguration directory missing" && exit 1); \
+    chown -R 1000:1000 /opt/nuclei-templates; \
+    \
+    # --- cleanup: remove install-only tooling and apt/temp caches ---
+    apt-get purge -y --auto-remove curl unzip; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/* \
+           /tmp/subfinder.zip \
+           /tmp/nuclei.zip
+
 RUN groupadd --system --gid 1000 app && \
-    useradd --system --uid 1000 --gid app --no-create-home app
+    useradd --system --uid 1000 --gid app --create-home --home-dir /home/app app
 WORKDIR /app
 COPY --from=builder /wheels /wheels
 RUN pip install --no-index --find-links=/wheels asm && rm -rf /wheels

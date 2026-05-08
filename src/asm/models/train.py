@@ -139,7 +139,7 @@ def main() -> None:
         # Log model with input example so MLflow infers the signature
         mlflow.xgboost.log_model(
             model,
-            name="model",
+            artifact_path="model",
             input_example=X_train.head(3),
             registered_model_name="cve-risk-classifier",
         )
