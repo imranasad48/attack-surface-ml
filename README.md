@@ -2,8 +2,24 @@
 
 > ML-driven attack surface management: discovery, misconfiguration scanning, and CVE risk prioritization, integrated end-to-end behind an authenticated API. Hardened with an MLSecOps pipeline.
 
-[![CI](https://github.com/daniyal-hussain01/attack-surface-ml/actions/workflows/ci.yml/badge.svg)](https://github.com/daniyal-hussain01/attack-surface-ml/actions/workflows/ci.yml)
-[![Security](https://github.com/daniyal-hussain01/attack-surface-ml/actions/workflows/security.yml/badge.svg)](https://github.com/daniyal-hussain01/attack-surface-ml/actions/workflows/security.yml)
+[![CI](https://github.com/imranasad48/attack-surface-ml/actions/workflows/ci.yml/badge.svg)](https://github.com/imranasad48/attack-surface-ml/actions/workflows/ci.yml)
+[![Security](https://github.com/imranasad48/attack-surface-ml/actions/workflows/security.yml/badge.svg)](https://github.com/imranasad48/attack-surface-ml/actions/workflows/security.yml)
+[![Deploy](https://github.com/imranasad48/attack-surface-ml/actions/workflows/deploy.yml/badge.svg)](https://github.com/imranasad48/attack-surface-ml/actions/workflows/deploy.yml)
+
+## Live deployment
+
+The production system is live at **<https://13-233-25-75.nip.io>** — single-node EC2 in `ap-south-1` (Mumbai), HTTPS via Let's Encrypt, auto-deployed on push to `main` via GitHub Actions.
+
+Quick checks:
+
+```bash
+curl https://13-233-25-75.nip.io/health
+# {"status":"ok","model_loaded":"True","model_version":"1"}
+```
+
+- Swagger UI: <https://13-233-25-75.nip.io/docs>
+- Operational runbook: [`docs/deployment.md`](docs/deployment.md)
+- Target HA architecture: [`docs/aws-blueprint.md`](docs/aws-blueprint.md)
 
 ## What it does
 
@@ -198,17 +214,11 @@ See [`docs/architecture.md`](docs/architecture.md) for the full picture and [`do
 - Train/serve feature parity is enforced by convention (two `_build_features` mirrors flagged in code comments) — see `docs/architecture.md` §4 for the failure mode and mitigation plan.
 - Discovery and misconfig wrap subprocess calls behind the same hash-validated manifest pattern that `asm.data.ingest` uses for the EPSS feed — every scan output has a sibling `.manifest.json` recording SHA-256, byte count, target, and timestamp.
 
-## Production design (phase 2)
+## Production deployment
 
-The local MVP demonstrates every MLSecOps control end-to-end. The production deployment is specified in [`docs/aws-blueprint.md`](docs/aws-blueprint.md):
+**Live (v1):** Single-node EC2 in `ap-south-1` (Mumbai). Three Docker services — `api` (FastAPI), `mlflow` (model registry), `postgres` — behind nginx with a Let's Encrypt certificate. GitHub Actions auto-deploys on push to `main`. CloudWatch agent ships CPU/memory/disk metrics. Full runbook in [`docs/deployment.md`](docs/deployment.md).
 
-- **Compute:** AWS App Runner (auto-scaling container service) pulling from ECR
-- **Storage:** S3 buckets for model artifacts and EPSS snapshots, KMS-encrypted, versioned
-- **IaC:** Terraform with dev/stage/prod separation
-- **Secrets:** AWS Secrets Manager + IAM role-based access
-- **Observability:** CloudWatch logs + metrics, alarms wired to SNS
-- **Signing:** Sigstore Cosign on every promoted artifact, verified at container load
-- **Job store:** Redis or DynamoDB to replace the in-process `_JOBS` dict
+**Target (v2):** The original blueprint targets ECS/Fargate or App Runner with an Application Load Balancer, RDS-managed Postgres, KMS-encrypted S3 for model artifacts, AWS Secrets Manager for runtime secrets, and Terraform for infrastructure-as-code. v1 was deliberately scoped to a single-node deployment to validate the orchestrator end-to-end before adding HA complexity. See [`docs/aws-blueprint.md`](docs/aws-blueprint.md) for the full target architecture.
 
 ## Repository layout
 
@@ -241,4 +251,4 @@ Within this repository, individual code authorship breaks down as follows (verif
 
 Substantial contributions from **Syed Muhammad Meesum Abbas, Raza Shah Hussain, and Muhammad Hassan** to the wider project — research, system design, documentation, evaluation — live outside this repository and are not reflected in the file-level commit history above. The split here is a code-attribution map, not a measure of overall contribution.
 
-Scope discipline was deliberate: ship a working local MVP that demonstrates every MLSecOps control plus all three ASM pillars, rather than half-build a production AWS deployment. The blueprint document specifies the production architecture in full.
+The repository ships both a working local MVP for contributors and a deployed production system at <https://13-233-25-75.nip.io>. v1 was deliberately scoped to single-node EC2 to validate the full orchestrator end-to-end; v2 targets HA infrastructure as detailed in [`docs/aws-blueprint.md`](docs/aws-blueprint.md).
