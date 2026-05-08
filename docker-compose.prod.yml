@@ -1,0 +1,57 @@
+# Production docker-compose for EC2 deployment.
+# - Pulls API image from GHCR (no local build)
+# - All services restart on host reboot
+# - API bound to 127.0.0.1 only — nginx terminates HTTPS on 443 and proxies here
+# - Postgres and MLflow have no host port bindings (docker network only)
+# See docs/deployment.md for the full deploy story.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: asm
+      POSTGRES_PASSWORD: asm
+      POSTGRES_DB: asm
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U asm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.11.1
+    restart: always
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri postgresql://asm:asm@postgres:5432/asm
+      --default-artifact-root /mlflow/artifacts
+    volumes:
+      - mlflow-artifacts:/mlflow/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    image: ghcr.io/imranasad48/attack-surface-ml:latest
+    restart: always
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql://asm:asm@postgres:5432/asm"
+      MLFLOW_TRACKING_URI: "http://mlflow:5000"
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
+
+volumes:
+  pgdata:
+  mlflow-artifacts:
