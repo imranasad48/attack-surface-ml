@@ -145,8 +145,7 @@ def predict(
     proba_arr = model.predict_proba(features)[:, 1]
 
     scores = [
-        CVEScore(cve_id=cve, risk_score=float(p), high_risk=bool(p >= 0.5))
-        for cve, p in zip(req.cve_ids, proba_arr, strict=True)
+        CVEScore(cve_id=cve, risk_score=float(p), high_risk=bool(p >= 0.5)) for cve, p in zip(req.cve_ids, proba_arr, strict=True)
     ]
     audit_log(
         event="predict",

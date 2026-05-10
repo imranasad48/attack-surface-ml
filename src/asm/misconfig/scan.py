@@ -89,9 +89,7 @@ def scan(hosts: list[str], severities: str | None = None) -> MisconfigResult:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Misconfiguration scan: nuclei orchestration over a list of hosts."
-    )
+    parser = argparse.ArgumentParser(description="Misconfiguration scan: nuclei orchestration over a list of hosts.")
     parser.add_argument("hosts", nargs="+", help="One or more hosts to scan")
     parser.add_argument(
         "--severities",

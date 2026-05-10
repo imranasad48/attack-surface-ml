@@ -97,14 +97,8 @@ def test_batch_lookup_returns_per_cpe_dict(fresh_cache: None) -> None:
 
 def test_cpe22_to_cpe23_conversion() -> None:
     """nmap emits CPE 2.2; NVD requires 2.3 — convert before the HTTP call."""
-    assert (
-        nvd._to_cpe_23("cpe:/a:openbsd:openssh:6.6.1p1")
-        == "cpe:2.3:a:openbsd:openssh:6.6.1p1:*:*:*:*:*:*:*"
-    )
-    assert (
-        nvd._to_cpe_23("cpe:/a:apache:http_server:2.4.7")
-        == "cpe:2.3:a:apache:http_server:2.4.7:*:*:*:*:*:*:*"
-    )
+    assert nvd._to_cpe_23("cpe:/a:openbsd:openssh:6.6.1p1") == "cpe:2.3:a:openbsd:openssh:6.6.1p1:*:*:*:*:*:*:*"
+    assert nvd._to_cpe_23("cpe:/a:apache:http_server:2.4.7") == "cpe:2.3:a:apache:http_server:2.4.7:*:*:*:*:*:*:*"
 
 
 def test_cpe23_passthrough() -> None:

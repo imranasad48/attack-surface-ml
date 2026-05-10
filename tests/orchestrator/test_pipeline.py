@@ -55,9 +55,7 @@ def _fake_misconfig(hosts: list[str]) -> MisconfigResult:
     )
 
 
-def test_run_scan_happy_path_without_api_scoring(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_run_scan_happy_path_without_api_scoring(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Discovery + misconfig + NVD all succeed; score_via_api=False skips /predict."""
     monkeypatch.setattr(pipeline, "ORCHESTRATOR_DIR", tmp_path)
     monkeypatch.setattr(pipeline, "discover", lambda target, max_assets: _fake_discovery())
@@ -104,14 +102,10 @@ def test_run_scan_happy_path_without_api_scoring(
     # Result + manifest persisted
     files = list(tmp_path.iterdir())
     assert any(f.name.endswith(".manifest.json") for f in files)
-    assert any(
-        f.name.endswith(".json") and ".manifest" not in f.name for f in files
-    )
+    assert any(f.name.endswith(".json") and ".manifest" not in f.name for f in files)
 
 
-def test_discovery_failure_yields_failed_result_without_raising(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_discovery_failure_yields_failed_result_without_raising(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A discovery exception must be caught and surfaced as status='failed'."""
     monkeypatch.setattr(pipeline, "ORCHESTRATOR_DIR", tmp_path)
 
@@ -127,9 +121,7 @@ def test_discovery_failure_yields_failed_result_without_raising(
     assert result.assets == []
 
 
-def test_misconfig_failure_does_not_abort_scan(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_misconfig_failure_does_not_abort_scan(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """nuclei blowing up is tolerable: scan still completes with empty misconfig list."""
     monkeypatch.setattr(pipeline, "ORCHESTRATOR_DIR", tmp_path)
     monkeypatch.setattr(pipeline, "discover", lambda target, max_assets: _fake_discovery())
@@ -158,9 +150,7 @@ def test_misconfig_failure_does_not_abort_scan(
     assert len(asset.cves) == 1
 
 
-def test_nvd_failure_continues_with_empty_cves(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_nvd_failure_continues_with_empty_cves(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """NVD outage is tolerable: result completes but error field surfaces the failure."""
     monkeypatch.setattr(pipeline, "ORCHESTRATOR_DIR", tmp_path)
     monkeypatch.setattr(pipeline, "discover", lambda target, max_assets: _fake_discovery())

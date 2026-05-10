@@ -85,9 +85,7 @@ def _index_findings_by_host(misconfig: MisconfigResult) -> dict[str, list[Findin
     return by_host
 
 
-def _findings_for_hostname(
-    hostname: str, by_host: dict[str, list[Finding]]
-) -> list[Finding]:
+def _findings_for_hostname(hostname: str, by_host: dict[str, list[Finding]]) -> list[Finding]:
     """Match a discovery hostname to nuclei host strings (which are usually full URLs)."""
     out: list[Finding] = []
     for host, findings in by_host.items():
@@ -109,9 +107,7 @@ def _services_from_asset(asset: Any) -> list[dict[str, Any]]:
     ]
 
 
-def _cves_for_asset(
-    asset: Any, cpe_to_cves: dict[str, list[str]]
-) -> list[dict[str, Any]]:
+def _cves_for_asset(asset: Any, cpe_to_cves: dict[str, list[str]]) -> list[dict[str, Any]]:
     """Build the per-asset CVE records. Same CVE may appear twice if reached via two CPEs."""
     out: list[dict[str, Any]] = []
     for port in asset.ports:
@@ -129,9 +125,7 @@ def _cves_for_asset(
     return out
 
 
-def _score_asset_cves(
-    asset_hostname: str, cves: list[dict[str, Any]], api_key: str
-) -> list[dict[str, Any]]:
+def _score_asset_cves(asset_hostname: str, cves: list[dict[str, Any]], api_key: str) -> list[dict[str, Any]]:
     """POST /predict in chunks of PREDICT_CHUNK_SIZE; merge risk_score back into cves.
 
     On any HTTP failure, leave risk_score=None and return — the caller logs and continues.
@@ -169,9 +163,7 @@ def _score_asset_cves(
     return enriched
 
 
-def _risk_summary(
-    cves: list[dict[str, Any]], misconfigs: list[dict[str, Any]]
-) -> dict[str, Any]:
+def _risk_summary(cves: list[dict[str, Any]], misconfigs: list[dict[str, Any]]) -> dict[str, Any]:
     unique_ids = {c["cve_id"] for c in cves}
     high_risk_ids = {c["cve_id"] for c in cves if c.get("high_risk")}
     scored = [c["risk_score"] for c in cves if c.get("risk_score") is not None]
@@ -192,16 +184,10 @@ def _risk_summary(
     }
 
 
-def _aggregate_summary(
-    assets: list[AssetRiskReport], duration_s: float
-) -> dict[str, Any]:
+def _aggregate_summary(assets: list[AssetRiskReport], duration_s: float) -> dict[str, Any]:
     total_cves = sum(a.risk_summary.get("n_cves", 0) for a in assets)
     total_misconfigs = sum(a.risk_summary.get("n_misconfigs", 0) for a in assets)
-    per_asset_max = [
-        a.risk_summary["max_risk_score"]
-        for a in assets
-        if a.risk_summary.get("max_risk_score") is not None
-    ]
+    per_asset_max = [a.risk_summary["max_risk_score"] for a in assets if a.risk_summary.get("max_risk_score") is not None]
     return {
         "total_assets": len(assets),
         "total_cves": total_cves,
@@ -226,9 +212,7 @@ def _failed_result(target: str, scanned_at: datetime, err: str) -> UnifiedScanRe
     return result
 
 
-def run_scan(
-    target: str, max_assets: int = 10, score_via_api: bool = True
-) -> UnifiedScanResult:
+def run_scan(target: str, max_assets: int = 10, score_via_api: bool = True) -> UnifiedScanResult:
     """Run the full pipeline. Lower max_assets default than discovery — NVD lookups are slow."""
     started = time.monotonic()
     scanned_at = datetime.now(UTC)
@@ -254,9 +238,7 @@ def run_scan(
         log.info("pipeline.misconfig.done", n_findings=len(misconfig_result.findings))
     except Exception as e:
         log.error("pipeline.misconfig.error", error=str(e))
-        misconfig_result = MisconfigResult(
-            scanned_at=scanned_at, targets=hosts, findings=[], tool_versions={}
-        )
+        misconfig_result = MisconfigResult(scanned_at=scanned_at, targets=hosts, findings=[], tool_versions={})
 
     findings_by_host = _index_findings_by_host(misconfig_result)
 
@@ -295,14 +277,9 @@ def run_scan(
             try:
                 cves = _score_asset_cves(asset.hostname, cves, settings.api_key)
             except Exception as e:
-                log.error(
-                    "pipeline.scoring.error", host=asset.hostname, error=str(e)
-                )
+                log.error("pipeline.scoring.error", host=asset.hostname, error=str(e))
 
-        misconfigs_for_host = [
-            f.model_dump(mode="json")
-            for f in _findings_for_hostname(asset.hostname, findings_by_host)
-        ]
+        misconfigs_for_host = [f.model_dump(mode="json") for f in _findings_for_hostname(asset.hostname, findings_by_host)]
         report = AssetRiskReport(
             hostname=asset.hostname,
             ip=asset.ip,
@@ -338,9 +315,7 @@ def run_scan(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Unified ASM scan: discovery + misconfig + CVE scoring."
-    )
+    parser = argparse.ArgumentParser(description="Unified ASM scan: discovery + misconfig + CVE scoring.")
     parser.add_argument("target", help="Apex domain to scan (e.g. example.com)")
     parser.add_argument(
         "--max-assets",
@@ -354,9 +329,7 @@ def main() -> None:
         help="Skip the /predict scoring phase (useful when the API isn't running)",
     )
     args = parser.parse_args()
-    result = run_scan(
-        args.target, max_assets=args.max_assets, score_via_api=not args.no_score
-    )
+    result = run_scan(args.target, max_assets=args.max_assets, score_via_api=not args.no_score)
     print(_result_path(result.target, result.scanned_at))
 
 

@@ -48,9 +48,7 @@ def _cache_get(cpe: str) -> list[str] | None:
     """Return cached CVE-ID list for `cpe`, incrementing hit_count. None on miss."""
     _init_cache_db()
     with sqlite3.connect(NVD_CACHE_DB) as conn:
-        row = conn.execute(
-            "SELECT cve_ids, hit_count FROM cpe_cve_cache WHERE cpe = ?", (cpe,)
-        ).fetchone()
+        row = conn.execute("SELECT cve_ids, hit_count FROM cpe_cve_cache WHERE cpe = ?", (cpe,)).fetchone()
         if row is None:
             return None
         cve_ids_json, hit_count = row
@@ -69,8 +67,7 @@ def _cache_put(cpe: str, cve_ids: list[str]) -> None:
     _init_cache_db()
     with sqlite3.connect(NVD_CACHE_DB) as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO cpe_cve_cache (cpe, cve_ids, fetched_at, hit_count) "
-            "VALUES (?, ?, ?, 1)",
+            "INSERT OR REPLACE INTO cpe_cve_cache (cpe, cve_ids, fetched_at, hit_count) VALUES (?, ?, ?, 1)",
             (cpe, json.dumps(cve_ids), datetime.now(UTC).isoformat()),
         )
         conn.commit()
@@ -136,9 +133,7 @@ def lookup_cves_for_cpe(cpe: str, settings: Settings | None = None) -> list[str]
     return cve_ids
 
 
-def lookup_cves_for_cpes(
-    cpes: list[str], settings: Settings | None = None
-) -> dict[str, list[str]]:
+def lookup_cves_for_cpes(cpes: list[str], settings: Settings | None = None) -> dict[str, list[str]]:
     """Batch over `cpes` (deduped). Returns {cpe: [cve_ids]}. Reuses cache between entries."""
     if settings is None:
         settings = get_settings()
@@ -171,7 +166,5 @@ def _cache_peek(cpe: str) -> bool:
     """Read-only existence check used for batch metrics. Does not increment hit_count."""
     _init_cache_db()
     with sqlite3.connect(NVD_CACHE_DB) as conn:
-        row = conn.execute(
-            "SELECT 1 FROM cpe_cve_cache WHERE cpe = ?", (cpe,)
-        ).fetchone()
+        row = conn.execute("SELECT 1 FROM cpe_cve_cache WHERE cpe = ?", (cpe,)).fetchone()
     return row is not None

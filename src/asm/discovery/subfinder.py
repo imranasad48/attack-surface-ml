@@ -26,15 +26,10 @@ def enumerate_subdomains(target: str) -> list[str]:
         )
     except FileNotFoundError as e:
         log.error("discovery.tool.missing", tool="subfinder")
-        raise RuntimeError(
-            "subfinder not on PATH; install from "
-            "https://github.com/projectdiscovery/subfinder"
-        ) from e
+        raise RuntimeError("subfinder not on PATH; install from https://github.com/projectdiscovery/subfinder") from e
     except subprocess.TimeoutExpired as e:
         log.error("subfinder.error", target=target, exit_code=None)
-        raise RuntimeError(
-            f"subfinder timed out after {SUBFINDER_TIMEOUT}s for {target}"
-        ) from e
+        raise RuntimeError(f"subfinder timed out after {SUBFINDER_TIMEOUT}s for {target}") from e
     except subprocess.CalledProcessError as e:
         log.error("subfinder.error", target=target, exit_code=e.returncode)
         raise RuntimeError(f"subfinder failed for {target} (exit {e.returncode})") from e

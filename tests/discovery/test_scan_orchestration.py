@@ -10,9 +10,7 @@ from asm.discovery import scan
 from asm.discovery.schemas import PortInfo
 
 
-def test_one_host_failure_does_not_abort(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_one_host_failure_does_not_abort(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """One subdomain raising RuntimeError is logged and skipped; others still scan."""
     monkeypatch.setattr(scan, "DISCOVERY_DIR", tmp_path)
     monkeypatch.setattr(
@@ -43,9 +41,7 @@ def test_one_host_failure_does_not_abort(
         assert asset.ports[0].port == 80
 
 
-def test_truncation_keeps_max_assets_but_records_original_count(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_truncation_keeps_max_assets_but_records_original_count(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """When the candidate list (target + subdomains) exceeds max_assets, scan
     only the first N — record the original subfinder count in subdomains_found,
     and put the target itself at position 0 so a real apex is always covered."""

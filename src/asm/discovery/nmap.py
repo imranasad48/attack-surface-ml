@@ -30,9 +30,7 @@ def scan_host(host: str, ports: str = NMAP_PORTS) -> list[PortInfo]:
         )
     except FileNotFoundError as e:
         log.error("discovery.tool.missing", tool="nmap")
-        raise RuntimeError(
-            "nmap not on PATH; install from https://nmap.org/download.html"
-        ) from e
+        raise RuntimeError("nmap not on PATH; install from https://nmap.org/download.html") from e
     except subprocess.TimeoutExpired as e:
         log.error("nmap.error", host=host, exit_code=None)
         raise RuntimeError(f"nmap timed out after {NMAP_TIMEOUT}s for {host}") from e

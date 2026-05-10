@@ -13,9 +13,7 @@ from asm.misconfig import scan
 from asm.misconfig.schemas import Finding
 
 
-def test_scan_empty_hosts_short_circuits_without_invoking_nuclei(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_scan_empty_hosts_short_circuits_without_invoking_nuclei(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Empty host list returns immediately — nuclei must not be invoked, no files written."""
     called = False
 
@@ -36,9 +34,7 @@ def test_scan_empty_hosts_short_circuits_without_invoking_nuclei(
     assert list(tmp_path.iterdir()) == []  # nothing written
 
 
-def test_scan_aggregates_findings_and_writes_manifest(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_scan_aggregates_findings_and_writes_manifest(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Non-empty scan: findings flow through, tool_versions populated, both files land in MISCONFIG_DIR."""
     fake_finding = Finding(
         template_id="apache-mod-negotiation-listing",

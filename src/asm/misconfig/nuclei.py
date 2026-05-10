@@ -37,9 +37,7 @@ def scan_hosts(
     log.info("misconfig.nuclei.start", hosts=len(hosts), template_path=template_path)
 
     # nuclei -u takes a single host; -l takes a file. Always use -l for consistency.
-    with tempfile.NamedTemporaryFile(
-        mode="w", delete=False, suffix=".txt", encoding="utf-8"
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt", encoding="utf-8") as f:
         f.write("\n".join(hosts))
         host_list_path = f.name
 
@@ -64,15 +62,10 @@ def scan_hosts(
         )
     except FileNotFoundError as e:
         log.error("misconfig.tool.missing", tool="nuclei")
-        raise RuntimeError(
-            "nuclei not on PATH; install from "
-            "https://github.com/projectdiscovery/nuclei/releases/latest"
-        ) from e
+        raise RuntimeError("nuclei not on PATH; install from https://github.com/projectdiscovery/nuclei/releases/latest") from e
     except subprocess.TimeoutExpired as e:
         log.error("misconfig.nuclei.error", reason="timeout")
-        raise RuntimeError(
-            f"nuclei timed out after {NUCLEI_TIMEOUT}s for {len(hosts)} hosts"
-        ) from e
+        raise RuntimeError(f"nuclei timed out after {NUCLEI_TIMEOUT}s for {len(hosts)} hosts") from e
     finally:
         Path(host_list_path).unlink(missing_ok=True)
 
@@ -100,9 +93,7 @@ def _parse_finding(raw: dict[str, Any]) -> Finding:
         host = "unknown"
 
     ts_raw = raw.get("timestamp")
-    timestamp = (
-        datetime.fromisoformat(ts_raw) if isinstance(ts_raw, str) else datetime.now(UTC)
-    )
+    timestamp = datetime.fromisoformat(ts_raw) if isinstance(ts_raw, str) else datetime.now(UTC)
 
     return Finding(
         template_id=raw.get("template-id", ""),
