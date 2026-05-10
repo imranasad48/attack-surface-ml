@@ -17,7 +17,7 @@ def enumerate_subdomains(target: str) -> list[str]:
     """Return discovered subdomains for `target`. Raises RuntimeError on tool failure or timeout."""
     log.info("subfinder.start", target=target)
     try:
-        result = subprocess.run(  # noqa: S603, S607
+        result = subprocess.run(
             ["subfinder", "-d", target, "-silent", "-timeout", "60"],
             timeout=SUBFINDER_TIMEOUT,
             capture_output=True,
@@ -47,7 +47,7 @@ def enumerate_subdomains(target: str) -> list[str]:
 def _subfinder_version() -> str:
     """Best-effort version probe. Returns 'unknown' on any failure."""
     try:
-        result = subprocess.run(  # noqa: S603, S607
+        result = subprocess.run(
             ["subfinder", "-version"],
             timeout=10,
             capture_output=True,

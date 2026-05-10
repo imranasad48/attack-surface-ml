@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 import pytest
@@ -26,7 +26,7 @@ class _FakeClient:
     """Minimal httpx.Client stand-in. Counts get() calls so tests can assert cache hits."""
 
     calls = 0
-    payload_for: dict[str, dict[str, Any]] = {}
+    payload_for: ClassVar[dict[str, dict[str, Any]]] = {}
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         pass

@@ -42,7 +42,7 @@ def test_update_job_atomic_under_concurrent_calls() -> None:
     def worker(i: int) -> None:
         try:
             jobs.update_job(job.job_id, error=f"thread-{i}")
-        except BaseException as e:  # noqa: BLE001 — capture any thread-side failure
+        except BaseException as e:
             errors.append(e)
 
     threads = [threading.Thread(target=worker, args=(i,)) for i in range(n_threads)]

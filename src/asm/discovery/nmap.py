@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import subprocess
-import xml.etree.ElementTree as ET  # noqa: S405 — parsing trusted local-process output
+import xml.etree.ElementTree as ET
 
 import structlog
 
@@ -21,7 +21,7 @@ def scan_host(host: str, ports: str = NMAP_PORTS) -> list[PortInfo]:
     """Run nmap -sV against `host` on `ports`; return only state=open as PortInfo."""
     log.info("nmap.start", host=host, ports=ports)
     try:
-        result = subprocess.run(  # noqa: S603, S607
+        result = subprocess.run(
             ["nmap", "-sV", "-p", ports, "-oX", "-", host],
             timeout=NMAP_TIMEOUT,
             capture_output=True,
@@ -82,7 +82,7 @@ def _parse_xml(xml_str: str) -> list[PortInfo]:
 def _nmap_version() -> str:
     """Best-effort nmap version probe. Returns 'unknown' on any failure."""
     try:
-        result = subprocess.run(  # noqa: S603, S607
+        result = subprocess.run(
             ["nmap", "--version"],
             timeout=10,
             capture_output=True,

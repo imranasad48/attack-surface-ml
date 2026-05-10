@@ -45,7 +45,7 @@ def scan_hosts(
 
     try:
         # check=False: nuclei exits non-zero when findings exist, which isn't a tool error
-        result = subprocess.run(  # noqa: S603, S607
+        result = subprocess.run(
             [
                 "nuclei",
                 "-l",
@@ -122,7 +122,7 @@ def _parse_finding(raw: dict[str, Any]) -> Finding:
 def _nuclei_version() -> str:
     """Best-effort nuclei version probe. Returns 'vX.Y.Z' or 'unknown' on any failure."""
     try:
-        result = subprocess.run(  # noqa: S603, S607
+        result = subprocess.run(
             ["nuclei", "-version"],
             timeout=10,
             capture_output=True,

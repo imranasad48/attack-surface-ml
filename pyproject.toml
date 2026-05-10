@@ -9,7 +9,7 @@ description = "ML-driven attack surface management with MLSecOps pipeline"
 requires-python = ">=3.11"
 readme = "README.md"
 license = { text = "MIT" }
-authors = [{ name = "Syed Daniyal Hussain, Muhammad Asad Imran" }]
+authors = [{ name = "Syed Daniyal Hussain" }]
 
 dependencies = [
     "fastapi>=0.110",
@@ -56,7 +56,7 @@ dashboard = [
 where = ["src"]
 
 [tool.ruff]
-line-length = 100
+line-length = 130
 target-version = "py311"
 src = ["src", "tests"]
 
