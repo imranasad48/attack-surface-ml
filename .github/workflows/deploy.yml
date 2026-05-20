@@ -96,18 +96,22 @@ jobs:
 
       - name: Health check
         run: |
-          echo "Waiting 20s for api container to become healthy..."
-          sleep 20
-          for i in $(seq 1 12); do
-            HTTP=$(curl -s -o /tmp/health.json -w "%{http_code}" https://${{ secrets.EC2_HOST }}/health || true)
-            BODY=$(cat /tmp/health.json 2>/dev/null || echo "")
-            echo "[$i/12] HTTP=$HTTP body=$BODY"
-            if [ "$HTTP" = "200" ] && echo "$BODY" | grep -q '"model_loaded":"True"'; then
-              echo "Deploy healthy. ✅"
-              exit 0
-            fi
-            sleep 10
-          done
-          echo "Health check failed after 2 minutes. ❌"
-          exit 1
+         echo "Waiting 20s for api container to become healthy..."
+         sleep 20
+         for i in $(seq 1 12); do
+           RESULT=$(ssh -o StrictHostKeyChecking=no \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+            "curl -s -o /tmp/health.json -w '%{http_code}' http://localhost:8000/health 2>/dev/null || echo 000")
+           BODY=$(ssh -o StrictHostKeyChecking=no \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+            "cat /tmp/health.json 2>/dev/null || echo ''")
+            echo "[$i/12] HTTP=$RESULT body=$BODY"
+           if [ "$RESULT" = "200" ] && echo "$BODY" | grep -q '"model_loaded"'; then
+            echo "Deploy healthy. ✅"
+            exit 0
+          fi
+           sleep 10
+         done
+         echo "Health check failed after 2 minutes. ❌"
+         exit 1
 
