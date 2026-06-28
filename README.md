@@ -8,7 +8,7 @@
 
 ## Live deployment
 
-The production system is live at **<https://13-233-25-75.nip.io>** — single-node EC2 in `ap-south-1` (Mumbai), HTTPS via Let's Encrypt, auto-deployed on push to `main` via GitHub Actions.
+The production system is live at **<https://13.232.57.188.nip.io>** — single-node EC2 in `ap-south-1` (Mumbai), HTTPS via Let's Encrypt, auto-deployed on push to `main` via GitHub Actions.
 
 Quick checks:
 
@@ -17,7 +17,7 @@ curl https://13-233-25-75.nip.io/health
 # {"status":"ok","model_loaded":"True","model_version":"1"}
 ```
 
-- Swagger UI: <https://13-233-25-75.nip.io/docs>
+- Swagger UI: <https://13.232.57.188.nip.io/docs>
 - Operational runbook: [`docs/deployment.md`](docs/deployment.md)
 - Target HA architecture: [`docs/aws-blueprint.md`](docs/aws-blueprint.md)
 
@@ -251,4 +251,4 @@ Within this repository, individual code authorship breaks down as follows (verif
 
 Substantial contributions from **Syed Muhammad Meesum Abbas, Raza Shah Hussain, and Muhammad Hassan** to the wider project — research, system design, documentation, evaluation — live outside this repository and are not reflected in the file-level commit history above. The split here is a code-attribution map, not a measure of overall contribution.
 
-The repository ships both a working local MVP for contributors and a deployed production system at <https://13-233-25-75.nip.io>. v1 was deliberately scoped to single-node EC2 to validate the full orchestrator end-to-end; v2 targets HA infrastructure as detailed in [`docs/aws-blueprint.md`](docs/aws-blueprint.md).
+The repository ships both a working local MVP for contributors and a deployed production system at <https://13.232.57.188.nip.io>. v1 was deliberately scoped to single-node EC2 to validate the full orchestrator end-to-end; v2 targets HA infrastructure as detailed in [`docs/aws-blueprint.md`](docs/aws-blueprint.md).
